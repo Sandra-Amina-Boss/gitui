@@ -1,6 +1,5 @@
 //! Sign commit data.
 
-use ssh_key::{HashAlg, LineEnding, PrivateKey};
 use std::path::PathBuf;
 
 /// Error type for [`SignBuilder`], used to create [`Sign`]'s
@@ -72,11 +71,11 @@ pub trait Sign {
 
 	/// only available in `#[cfg(test)]` helping to diagnose issues
 	#[cfg(test)]
-	fn program(&self) -> &String;
+	fn program(&self) -> String;
 
 	/// only available in `#[cfg(test)]` helping to diagnose issues
 	#[cfg(test)]
-	fn signing_key(&self) -> &String;
+	fn signing_key(&self) -> String;
 }
 
 /// A builder to facilitate the creation of a signing method ([`Sign`]) by examining the git configuration.
@@ -181,7 +180,7 @@ impl SignBuilder {
 							"ssh key setting absent",
 						))
 					})
-					.and_then(|key_path| SSHSign::new(program, key_path))?;
+					.and_then(|key_path| Ok(SSHSign { program, signing_key: key_path}))?;
 				let signer: Box<dyn Sign> = Box::new(ssh_signer);
 				Ok(signer)
 			}
@@ -194,16 +193,6 @@ impl SignBuilder {
 pub struct GPGSign {
 	program: String,
 	signing_key: String,
-}
-
-impl GPGSign {
-	/// Create new [`GPGSign`] using given program and signing key.
-	pub fn new(program: &str, signing_key: &str) -> Self {
-		Self {
-			program: program.to_string(),
-			signing_key: signing_key.to_string(),
-		}
-	}
 }
 
 impl Sign for GPGSign {
@@ -264,55 +253,20 @@ impl Sign for GPGSign {
 	}
 
 	#[cfg(test)]
-	fn program(&self) -> &String {
-		&self.program
+	fn program(&self) -> String {
+		self.program.clone()
 	}
 
 	#[cfg(test)]
-	fn signing_key(&self) -> &String {
-		&self.signing_key
+	fn signing_key(&self) -> String {
+		self.signing_key.clone()
 	}
 }
 
-/// Sign commit data using `SSHDiskKeySign`
+/// Sign commit data using `SSHSign`
 pub struct SSHSign {
-	#[cfg(test)]
 	program: String,
-	#[cfg(test)]
-	key_path: String,
-	secret_key: PrivateKey,
-}
-
-impl SSHSign {
-	/// Create new [`SSHDiskKeySign`] for sign.
-	pub fn new(program: String, mut key: PathBuf) -> Result<Self, SignBuilderError> {
-		key.set_extension("");
-		if key.is_file() {
-			#[cfg(test)]
-			let key_path = format!("{}", &key.display());
-			std::fs::read(key)
-				.ok()
-				.and_then(|bytes| {
-					PrivateKey::from_openssh(bytes).ok()
-				})
-				.map(|secret_key| Self {
-					#[cfg(test)]
-					program,
-					#[cfg(test)]
-					key_path,
-					secret_key,
-				})
-				.ok_or_else(|| {
-					SignBuilderError::SSHSigningKey(String::from(
-						"Fail to read the private key for sign.",
-					))
-				})
-		} else {
-			Err(SignBuilderError::SSHSigningKey(
-				String::from("Currently, we only support a pair of ssh key in disk."),
-			))
-		}
-	}
+	signing_key: PathBuf,
 }
 
 impl Sign for SSHSign {
@@ -320,23 +274,60 @@ impl Sign for SSHSign {
 		&self,
 		commit: &[u8],
 	) -> Result<(String, Option<String>), SignError> {
-		let sig = self
-			.secret_key
-			.sign("git", HashAlg::Sha256, commit)
-			.map_err(|err| SignError::Spawn(err.to_string()))?
-			.to_pem(LineEnding::LF)
-			.map_err(|err| SignError::Spawn(err.to_string()))?;
-		Ok((sig, None))
+	    use std::io::Write;
+		use std::process::{Command, Stdio};
+
+		let mut cmd = Command::new(&self.program);
+		cmd.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.arg("-Y")
+			.arg("sign")
+			.arg("-n")
+			.arg("git")
+			.arg("-f")
+			.arg(&self.signing_key);
+
+		log::trace!("signing command: {cmd:?}");
+
+		let mut child = cmd
+		    .spawn()
+			.map_err(|e| SignError::Spawn(e.to_string()))?;
+
+		let mut stdin = child.stdin.take().ok_or(SignError::Stdin)?;
+
+		stdin
+		    .write_all(commit)
+			.map_err(|e| SignError::WriteBuffer(e.to_string()))?;
+		drop(stdin);
+
+		let output = child
+		    .wait_with_output()
+			.map_err(|e| SignError::Output(e.to_string()))?;
+
+		if !output.status.success() {
+		    return Err(SignError::Shellout(format!(
+				"failed to sign data, program '{}' exited non-zero: {}",
+				&self.program,
+				std::str::from_utf8(&output.stderr)
+				    .unwrap_or("[error could not be read from stderr]")
+			)));
+		}
+
+		let signed_commit = std::str::from_utf8(&output.stdout)
+		    .map_err(|e| SignError::Shellout(e.to_string()))?;
+
+		Ok((signed_commit.to_string(), None))
 	}
 
 	#[cfg(test)]
-	fn program(&self) -> &String {
-		&self.program
+	fn program(&self) -> String {
+		self.program.clone()
 	}
 
 	#[cfg(test)]
-	fn signing_key(&self) -> &String {
-		&self.key_path
+	fn signing_key(&self) -> String {
+		format!("{}", self.signing_key.display())
 	}
 }
 
