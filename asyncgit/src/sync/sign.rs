@@ -156,6 +156,9 @@ impl SignBuilder {
 				String::from("x509"),
 			)),
 			"ssh" => {
+  	            let program = config
+                   .get_string("gpg.ssh.program")
+                   .unwrap_or_else(|_| "ssh-keygen".to_string());
 				let ssh_signer = config
 					.get_string("user.signingKey")
 					.ok()
@@ -178,7 +181,7 @@ impl SignBuilder {
 							"ssh key setting absent",
 						))
 					})
-					.and_then(SSHSign::new)?;
+					.and_then(|key_path| SSHSign::new(program, key_path))?;
 				let signer: Box<dyn Sign> = Box::new(ssh_signer);
 				Ok(signer)
 			}
@@ -282,7 +285,7 @@ pub struct SSHSign {
 
 impl SSHSign {
 	/// Create new [`SSHDiskKeySign`] for sign.
-	pub fn new(mut key: PathBuf) -> Result<Self, SignBuilderError> {
+	pub fn new(program: String, mut key: PathBuf) -> Result<Self, SignBuilderError> {
 		key.set_extension("");
 		if key.is_file() {
 			#[cfg(test)]
@@ -294,7 +297,7 @@ impl SSHSign {
 				})
 				.map(|secret_key| Self {
 					#[cfg(test)]
-					program: "ssh".to_string(),
+					program,
 					#[cfg(test)]
 					key_path,
 					secret_key,
