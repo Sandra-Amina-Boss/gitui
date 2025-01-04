@@ -167,9 +167,7 @@ impl SignBuilder {
 						)
 					})
 					.and_then(|signing_key| {
-						Self::signing_key_into_path(
-							&signing_key,
-						)
+						Self::signing_key_into_path(&signing_key)
 					})?;
 
 				Ok(Box::new(SSHSign {
@@ -188,12 +186,12 @@ impl SignBuilder {
 		if key_path.is_file() {
 			Ok(key_path)
 		} else if signing_key.starts_with("ssh-") {
-  				Ok(key_path) //TODO: write key to temp file
-  			} else {
-  				Err(SignBuilderError::SSHSigningKey(String::from(
+			Ok(key_path) //TODO: write key to temp file
+		} else {
+			Err(SignBuilderError::SSHSigningKey(String::from(
   					"ssh key could not be resolve. Either the key is not a file or the key is not a valid public ssh key",
   				)))
-  			}
+		}
 	}
 }
 
