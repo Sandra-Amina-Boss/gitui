@@ -192,7 +192,7 @@ impl SignBuilder {
 				NamedTempFile::new().map_err(|err| {
 					SignBuilderError::SSHSigningKey(err.to_string())
 				})?;
-			writeln!(temp_file, "{}", signing_key).map_err(
+			writeln!(temp_file, "{signing_key}").map_err(
 				|err| {
 					SignBuilderError::SSHSigningKey(err.to_string())
 				},
@@ -479,7 +479,7 @@ mod tests {
 			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
 
 		assert_eq!("ssh-keygen", sign.program());
-		assert_eq!(true, PathBuf::from(sign.signing_key()).is_file());
+		assert!(PathBuf::from(sign.signing_key()).is_file());
 
 		Ok(())
 	}
