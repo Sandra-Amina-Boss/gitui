@@ -158,35 +158,39 @@ impl SignBuilder {
   	            let program = config
                    .get_string("gpg.ssh.program")
                    .unwrap_or_else(|_| "ssh-keygen".to_string());
-				let ssh_signer = config
+
+				let signing_key = config
 					.get_string("user.signingKey")
-					.ok()
-					.and_then(|key_path| {
-						key_path.strip_prefix('~').map_or_else(
-							|| Some(PathBuf::from(&key_path)),
-							|ssh_key_path| {
-								dirs::home_dir().map(|home| {
-									home.join(
-										ssh_key_path
-											.strip_prefix('/')
-											.unwrap_or(ssh_key_path),
-									)
-								})
-							},
+					.map_err(|err| {
+						SignBuilderError::SSHSigningKey(
+							err.to_string(),
 						)
 					})
-					.ok_or_else(|| {
-						SignBuilderError::SSHSigningKey(String::from(
-							"ssh key setting absent",
-						))
-					})
-					.and_then(|key_path| Ok(SSHSign { program, signing_key: key_path}))?;
-				let signer: Box<dyn Sign> = Box::new(ssh_signer);
-				Ok(signer)
+					.and_then(|signing_key| { SignBuilder::signing_key_into_path(&signing_key) })?;
+
+				Ok(Box::new(SSHSign {
+					program,
+					signing_key,
+				}))
 			}
 			_ => Err(SignBuilderError::InvalidFormat(format)),
 		}
 	}
+
+	fn signing_key_into_path(signing_key: &str) -> Result<PathBuf, SignBuilderError> {
+        let key_path = PathBuf::from(signing_key);
+        if key_path.is_file() {
+            Ok(key_path)
+        } else {
+            if signing_key.starts_with("ssh-") {
+                Ok(key_path) //TODO: write key to temp file
+            } else {
+                Err(SignBuilderError::SSHSigningKey(String::from(
+					"ssh key could not be resolve. Either the key is not a file or the key is not a valid public ssh key",
+				)))
+            }
+        }
+    }
 }
 
 /// Sign commit data using `OpenPGP`
