@@ -155,9 +155,9 @@ impl SignBuilder {
 				String::from("x509"),
 			)),
 			"ssh" => {
-  	            let program = config
-                   .get_string("gpg.ssh.program")
-                   .unwrap_or_else(|_| "ssh-keygen".to_string());
+				let program = config
+					.get_string("gpg.ssh.program")
+					.unwrap_or_else(|_| "ssh-keygen".to_string());
 
 				let signing_key = config
 					.get_string("user.signingKey")
@@ -166,7 +166,11 @@ impl SignBuilder {
 							err.to_string(),
 						)
 					})
-					.and_then(|signing_key| { SignBuilder::signing_key_into_path(&signing_key) })?;
+					.and_then(|signing_key| {
+						SignBuilder::signing_key_into_path(
+							&signing_key,
+						)
+					})?;
 
 				Ok(Box::new(SSHSign {
 					program,
@@ -177,20 +181,22 @@ impl SignBuilder {
 		}
 	}
 
-	fn signing_key_into_path(signing_key: &str) -> Result<PathBuf, SignBuilderError> {
-        let key_path = PathBuf::from(signing_key);
-        if key_path.is_file() {
-            Ok(key_path)
-        } else {
-            if signing_key.starts_with("ssh-") {
-                Ok(key_path) //TODO: write key to temp file
-            } else {
-                Err(SignBuilderError::SSHSigningKey(String::from(
+	fn signing_key_into_path(
+		signing_key: &str,
+	) -> Result<PathBuf, SignBuilderError> {
+		let key_path = PathBuf::from(signing_key);
+		if key_path.is_file() {
+			Ok(key_path)
+		} else {
+			if signing_key.starts_with("ssh-") {
+				Ok(key_path) //TODO: write key to temp file
+			} else {
+				Err(SignBuilderError::SSHSigningKey(String::from(
 					"ssh key could not be resolve. Either the key is not a file or the key is not a valid public ssh key",
 				)))
-            }
-        }
-    }
+			}
+		}
+	}
 }
 
 /// Sign commit data using `OpenPGP`
@@ -278,7 +284,7 @@ impl Sign for SSHSign {
 		&self,
 		commit: &[u8],
 	) -> Result<(String, Option<String>), SignError> {
-	    use std::io::Write;
+		use std::io::Write;
 		use std::process::{Command, Stdio};
 
 		let mut cmd = Command::new(&self.program);
@@ -295,22 +301,22 @@ impl Sign for SSHSign {
 		log::trace!("signing command: {cmd:?}");
 
 		let mut child = cmd
-		    .spawn()
+			.spawn()
 			.map_err(|e| SignError::Spawn(e.to_string()))?;
 
 		let mut stdin = child.stdin.take().ok_or(SignError::Stdin)?;
 
 		stdin
-		    .write_all(commit)
+			.write_all(commit)
 			.map_err(|e| SignError::WriteBuffer(e.to_string()))?;
 		drop(stdin);
 
 		let output = child
-		    .wait_with_output()
+			.wait_with_output()
 			.map_err(|e| SignError::Output(e.to_string()))?;
 
 		if !output.status.success() {
-		    return Err(SignError::Shellout(format!(
+			return Err(SignError::Shellout(format!(
 				"failed to sign data, program '{}' exited non-zero: {}",
 				&self.program,
 				std::str::from_utf8(&output.stderr)
@@ -319,7 +325,7 @@ impl Sign for SSHSign {
 		}
 
 		let signed_commit = std::str::from_utf8(&output.stdout)
-		    .map_err(|e| SignError::Shellout(e.to_string()))?;
+			.map_err(|e| SignError::Shellout(e.to_string()))?;
 
 		Ok((signed_commit.to_string(), None))
 	}
