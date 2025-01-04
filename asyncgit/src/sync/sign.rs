@@ -323,7 +323,13 @@ impl Sign for SSHSign {
 			.wait_with_output()
 			.map_err(|e| SignError::Output(e.to_string()))?;
 
-		//TODO: cleanup temp file if created
+		let tmp_path = std::env::temp_dir();
+		if self.signing_key.starts_with(tmp_path) {
+			// Not handling error, as its not that bad. OS maintenance tasks will take care of it at a later point.
+			let _ = std::fs::remove_file(PathBuf::from(
+				&self.signing_key,
+			));
+		}
 
 		if !output.status.success() {
 			return Err(SignError::Shellout(format!(
