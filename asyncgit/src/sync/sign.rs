@@ -192,11 +192,9 @@ impl SignBuilder {
 				NamedTempFile::new().map_err(|err| {
 					SignBuilderError::SSHSigningKey(err.to_string())
 				})?;
-			writeln!(temp_file, "{signing_key}").map_err(
-				|err| {
-					SignBuilderError::SSHSigningKey(err.to_string())
-				},
-			)?;
+			writeln!(temp_file, "{signing_key}").map_err(|err| {
+				SignBuilderError::SSHSigningKey(err.to_string())
+			})?;
 			let temp_file = temp_file.keep().map_err(|err| {
 				SignBuilderError::SSHSigningKey(err.to_string())
 			})?;
