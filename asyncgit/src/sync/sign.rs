@@ -440,19 +440,28 @@ mod tests {
 	#[test]
 	fn test_ssh_program_configs() -> Result<()> {
 		let (_tmp_dir, repo) = repo_init_empty()?;
+		let temp_file = tempfile::NamedTempFile::new()
+			.expect("failed to create temp file");
 
 		{
 			let mut config = repo.config()?;
-			config.set_str("gpg.program", "ssh")?;
-			config.set_str("user.signingKey", "/tmp/key.pub")?;
+			config.set_str("gpg.format", "ssh")?;
+			config.set_str(
+				"user.signingKey",
+				temp_file.path().to_str().unwrap(),
+			)?;
 		}
 
 		let sign =
 			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
 
 		assert_eq!("ssh-keygen", sign.program());
-		assert_eq!("/tmp/key.pub", sign.signing_key());
+		assert_eq!(
+			temp_file.path().to_str().unwrap(),
+			sign.signing_key()
+		);
 
+		drop(temp_file);
 		Ok(())
 	}
 
@@ -462,14 +471,14 @@ mod tests {
 
 		{
 			let mut config = repo.config()?;
-			config.set_str("gpg.program", "ssh")?;
+			config.set_str("gpg.format", "ssh")?;
 			config.set_str("user.signingKey", "ssh-ed25519 test")?;
 		}
 
 		let sign =
 			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
 
-		assert_eq!("ssh", sign.program());
+		assert_eq!("ssh-keygen", sign.program());
 		assert_eq!(true, PathBuf::from(sign.signing_key()).is_file());
 
 		Ok(())
@@ -478,18 +487,27 @@ mod tests {
 	#[test]
 	fn test_ssh_external_bin_config() -> Result<()> {
 		let (_tmp_dir, repo) = repo_init_empty()?;
+		let temp_file = tempfile::NamedTempFile::new()
+			.expect("failed to create temp file");
 
 		{
 			let mut config = repo.config()?;
-			config.set_str("gpg.program", "/opt/ssh/signer")?;
-			config.set_str("user.signingKey", "/tmp/key.pub")?;
+			config.set_str("gpg.format", "ssh")?;
+			config.set_str("gpg.ssh.program", "/opt/ssh/signer")?;
+			config.set_str(
+				"user.signingKey",
+				temp_file.path().to_str().unwrap(),
+			)?;
 		}
 
 		let sign =
 			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
 
 		assert_eq!("/opt/ssh/signer", sign.program());
-		assert_eq!("/tmp/key.pub", sign.signing_key());
+		assert_eq!(
+			temp_file.path().to_str().unwrap(),
+			sign.signing_key()
+		);
 
 		Ok(())
 	}
