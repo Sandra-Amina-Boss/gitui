@@ -186,10 +186,24 @@ impl SignBuilder {
 		if key_path.is_file() {
 			Ok(key_path)
 		} else if signing_key.starts_with("ssh-") {
-			Ok(key_path) //TODO: write key to temp file
+			use std::io::Write;
+			use tempfile::NamedTempFile;
+			let mut temp_file =
+				NamedTempFile::new().map_err(|err| {
+					SignBuilderError::SSHSigningKey(err.to_string())
+				})?;
+			writeln!(temp_file, "{}", signing_key).map_err(
+				|err| {
+					SignBuilderError::SSHSigningKey(err.to_string())
+				},
+			)?;
+			let temp_file = temp_file.keep().map_err(|err| {
+				SignBuilderError::SSHSigningKey(err.to_string())
+			})?;
+			Ok(temp_file.1)
 		} else {
 			Err(SignBuilderError::SSHSigningKey(String::from(
-  					"ssh key could not be resolve. Either the key is not a file or the key is not a valid public ssh key",
+  					"ssh key could not been resolved. Either the key is not a file or the key is not a valid public ssh key",
   				)))
 		}
 	}
@@ -310,6 +324,8 @@ impl Sign for SSHSign {
 		let output = child
 			.wait_with_output()
 			.map_err(|e| SignError::Output(e.to_string()))?;
+
+		//TODO: cleanup temp file if created
 
 		if !output.status.success() {
 			return Err(SignError::Shellout(format!(
