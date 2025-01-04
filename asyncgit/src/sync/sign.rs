@@ -450,7 +450,45 @@ mod tests {
 		let sign =
 			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
 
+		assert_eq!("ssh-keygen", sign.program());
+		assert_eq!("/tmp/key.pub", sign.signing_key());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_ssh_keyliteral_config() -> Result<()> {
+		let (_tmp_dir, repo) = repo_init_empty()?;
+
+		{
+			let mut config = repo.config()?;
+			config.set_str("gpg.program", "ssh")?;
+			config.set_str("user.signingKey", "ssh-ed25519 test")?;
+		}
+
+		let sign =
+			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
+
 		assert_eq!("ssh", sign.program());
+		assert_eq!(true, PathBuf::from(sign.signing_key()).is_file());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_ssh_external_bin_config() -> Result<()> {
+		let (_tmp_dir, repo) = repo_init_empty()?;
+
+		{
+			let mut config = repo.config()?;
+			config.set_str("gpg.program", "/opt/ssh/signer")?;
+			config.set_str("user.signingKey", "/tmp/key.pub")?;
+		}
+
+		let sign =
+			SignBuilder::from_gitconfig(&repo, &repo.config()?)?;
+
+		assert_eq!("/opt/ssh/signer", sign.program());
 		assert_eq!("/tmp/key.pub", sign.signing_key());
 
 		Ok(())
